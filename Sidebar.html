@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 16px;
+      }
+      .header {
+        margin-bottom: 20px;
+      }
+      select {
+        width: 100%;
+        padding: 8px;
+        margin-bottom: 16px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      button {
+        background-color: #4285F4;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-right: 8px;
+      }
+      button:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+      }
+      #status {
+        margin-top: 16px;
+        padding: 12px;
+        border-radius: 4px;
+        display: none;
+      }
+      .success {
+        background-color: #d9ead3;
+        color: #274e13;
+      }
+      .error {
+        background-color: #f4cccc;
+        color: #990000;
+      }
+      .info {
+        background-color: #cfe2f3;
+        color: #0b5394;
+      }
+      #results {
+        margin-top: 20px;
+        display: none;
+      }
+      .form-link {
+        margin-bottom: 8px;
+      }
+      .spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 3px solid rgba(255,255,255,.3);
+        border-radius: 50%;
+        border-top-color: white;
+        animation: spin 1s ease-in-out infinite;
+        margin-right: 8px;
+        vertical-align: middle;
+        display: none;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h3>IMSCC to Google Form Converter</h3>
+      <p>Select an IMSCC file from your Drive to convert to Google Forms.</p>
+    </div>
+    
+    <label for="file-picker">Select an IMSCC file:</label>
+    <select id="file-picker">
+      <option value="">-- Select a file --</option>
+    </select>
+    
+    <div>
+      <button id="refresh-button" onclick="loadIMSCCFiles()">
+        Refresh Files
+      </button>
+      <button id="convert-button" disabled onclick="convertFile()">
+        <span class="spinner" id="spinner"></span>
+        Convert to Form(s)
+      </button>
+    </div>
+    
+    <div id="status"></div>
+    
+    <div id="results">
+      <h4>Created Forms:</h4>
+      <div id="form-links"></div>
+    </div>
+    
+    <script>
+      // Load IMSCC files when the sidebar loads
+      window.onload = loadIMSCCFiles;
+      
+      // Listen for changes to the file picker
+      document.getElementById('file-picker').addEventListener('change', function() {
+        document.getElementById('convert-button').disabled = !this.value;
+      });
+      
+      // Function to load IMSCC files from Drive
+      function loadIMSCCFiles() {
+        showStatus('Loading IMSCC files from Drive...', 'info');
+        document.getElementById('refresh-button').disabled = true;
+        
+        google.script.run
+          .withSuccessHandler(function(files) {
+            const filePicker = document.getElementById('file-picker');
+            
+            // Clear existing options except the first one
+            while (filePicker.options.length > 1) {
+              filePicker.remove(1);
+            }
+            
+            // Add new options
+            if (files.length === 0) {
+              showStatus('No IMSCC files found in your Drive. Upload an IMSCC file to your Drive first.', 'info');
+            } else {
+              files.forEach(function(file) {
+                const option = document.createElement('option');
+                option.value = file.id;
+                option.text = file.name;
+                filePicker.add(option);
+              });
+              hideStatus();
+            }
+            
+            document.getElementById('refresh-button').disabled = false;
+            document.getElementById('convert-button').disabled = filePicker.value === '';
+          })
+          .withFailureHandler(function(error) {
+            showStatus('Error loading files: ' + error, 'error');
+            document.getElementById('refresh-button').disabled = false;
+          })
+          .findIMSCCFiles();
+      }
+      
+      // Function to convert the selected file
+      function convertFile() {
+        const fileId = document.getElementById('file-picker').value;
+        if (!fileId) {
+          showStatus('Please select a file first.', 'error');
+          return;
+        }
+        
+        showStatus('Converting IMSCC file to Google Forms...', 'info');
+        document.getElementById('spinner').style.display = 'inline-block';
+        document.getElementById('convert-button').disabled = true;
+        document.getElementById('results').style.display = 'none';
+        
+        google.script.run
+          .withSuccessHandler(function(result) {
+            document.getElementById('spinner').style.display = 'none';
+            document.getElementById('convert-button').disabled = false;
+            
+            if (result.success) {
+              showStatus(result.message, 'success');
+              
+              // Display form links
+              if (result.formIds && result.formIds.length > 0) {
+                const formLinks = document.getElementById('form-links');
+                formLinks.innerHTML = '';
+                
+                result.formIds.forEach(function(form) {
+                  const formLink = document.createElement('div');
+                  formLink.className = 'form-link';
+                  formLink.innerHTML = `<a href="${form.editUrl}" target="_blank">${form.title}</a>`;
+                  formLinks.appendChild(formLink);
+                });
+                
+                document.getElementById('results').style.display = 'block';
+              }
+            } else {
+              showStatus(result.message, 'error');
+            }
+          })
+          .withFailureHandler(function(error) {
+            document.getElementById('spinner').style.display = 'none';
+            document.getElementById('convert-button').disabled = false;
+            showStatus('Error: ' + error, 'error');
+          })
+          .convertIMSCCToForms(fileId);
+      }
+      
+      // Function to show a status message
+      function showStatus(message, type) {
+        const statusElement = document.getElementById('status');
+        statusElement.textContent = message;
+        statusElement.className = type;
+        statusElement.style.display = 'block';
+      }
+      
+      // Function to hide the status message
+      function hideStatus() {
+        document.getElementById('status').style.display = 'none';
+      }
+    </script>
+  </body>
+</html>
