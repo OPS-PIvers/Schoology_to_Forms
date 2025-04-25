@@ -84,10 +84,14 @@ function convertIMSCCToForms(fileId) {
       throw new Error('File not found');
     }
     
-    console.log(`Working with file: ${file.getName()} (${file.getSize()} bytes, ${file.getMimeType()})`);
+    // Store the original file name in script properties for later use
+    const fileName = file.getName();
+    PropertiesService.getScriptProperties().setProperty('current_file_name', fileName);
+    
+    console.log(`Working with file: ${fileName} (${file.getSize()} bytes, ${file.getMimeType()})`);
     
     // Check file extension
-    if (!file.getName().toLowerCase().endsWith('.imscc')) {
+    if (!fileName.toLowerCase().endsWith('.imscc')) {
       throw new Error('Not an IMSCC file. Please select a file with .imscc extension.');
     }
     
@@ -310,6 +314,10 @@ function findQuizzesInManifest(manifest, tempFolder) {
   const quizzes = [];
   const root = manifest.getRootElement();
   
+  // Get the original filename from the properties we stored during extraction
+  const originalFileName = PropertiesService.getScriptProperties().getProperty('current_file_name') || 'Imported Content';
+  console.log(`Using original file name: ${originalFileName}`);
+  
   try {
     // Add necessary namespaces for proper XML parsing
     const imsNS = XmlService.getNamespace('http://www.imsglobal.org/xsd/imscp_v1p1');
@@ -320,14 +328,13 @@ function findQuizzesInManifest(manifest, tempFolder) {
       console.log('No resources found in manifest.');
       
       // Create a default quiz object if no resources are found
-      const fileName = tempFolder.getName();
       const defaultQuiz = {
         identifier: 'default_quiz',
         href: '',
         files: [],
-        title: fileName.replace('.imscc', ''),
+        title: originalFileName.replace('.imscc', ''),
         content: {
-          title: fileName.replace('.imscc', ''),
+          title: originalFileName.replace('.imscc', ''),
           description: 'Converted from IMSCC file',
           questions: []
         }
@@ -391,13 +398,16 @@ function findQuizzesInManifest(manifest, tempFolder) {
     
     // If no quizzes were found, create a default one based on the file name
     if (quizzes.length === 0) {
-      // Get file name from the temp folder name as a fallback
-      const folderName = tempFolder.getName();
       const defaultQuiz = {
         identifier: 'default_quiz',
         href: '',
         files: [],
-        title: folderName.replace('IMSCC_Temp', '').trim() || 'Imported Content'
+        title: originalFileName.replace('.imscc', ''),
+        content: {
+          title: originalFileName.replace('.imscc', ''),
+          description: 'Converted from IMSCC file',
+          questions: []
+        }
       };
       quizzes.push(defaultQuiz);
       console.log(`No quizzes found in manifest. Created default quiz: ${defaultQuiz.title}`);
@@ -419,9 +429,9 @@ function findQuizzesInManifest(manifest, tempFolder) {
         identifier: 'fallback_quiz',
         href: '',
         files: [],
-        title: 'Imported Content',
+        title: originalFileName.replace('.imscc', ''),
         content: {
-          title: 'Imported Content',
+          title: originalFileName.replace('.imscc', ''),
           description: 'Converted from IMSCC file',
           questions: []
         }
@@ -932,10 +942,15 @@ function createGoogleForms(quizzes) {
     }
     
     try {
-      console.log(`Creating Google Form for: ${quiz.content.title}`);
+      // Ensure we have a valid title
+      const formTitle = quiz.content && quiz.content.title ? 
+        quiz.content.title : 
+        (quiz.title || `Imported IMSCC Quiz ${new Date().toISOString().split('T')[0]}`);
       
-      // Create a new form
-      const form = FormApp.create(quiz.content.title || `Quiz ${quiz.identifier}`); // Add fallback title
+      console.log(`Creating Google Form with title: "${formTitle}"`);
+      
+      // Create a new form with the determined title
+      const form = FormApp.create(formTitle);
       
       // Set description
       if (quiz.content.description) {
