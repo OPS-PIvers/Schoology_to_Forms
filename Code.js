@@ -318,9 +318,25 @@ function findQuizzesInManifest(manifest, tempFolder) {
     const resources = root.getChild('resources', imsNS);
     if (!resources) {
       console.log('No resources found in manifest.');
-      return quizzes;
+      
+      // Create a default quiz object if no resources are found
+      const fileName = tempFolder.getName();
+      const defaultQuiz = {
+        identifier: 'default_quiz',
+        href: '',
+        files: [],
+        title: fileName.replace('.imscc', ''),
+        content: {
+          title: fileName.replace('.imscc', ''),
+          description: 'Converted from IMSCC file',
+          questions: []
+        }
+      };
+      console.log(`Created default quiz with title: ${defaultQuiz.title}`);
+      return [defaultQuiz];
     }
     
+    // Find resources in the manifest
     const resourceElements = resources.getChildren('resource', imsNS);
     for (const resourceElement of resourceElements) {
       const typeAttr = resourceElement.getAttribute('type');
@@ -373,6 +389,20 @@ function findQuizzesInManifest(manifest, tempFolder) {
     
     console.log(`Found ${quizzes.length} quizzes in manifest`);
     
+    // If no quizzes were found, create a default one based on the file name
+    if (quizzes.length === 0) {
+      // Get file name from the temp folder name as a fallback
+      const folderName = tempFolder.getName();
+      const defaultQuiz = {
+        identifier: 'default_quiz',
+        href: '',
+        files: [],
+        title: folderName.replace('IMSCC_Temp', '').trim() || 'Imported Content'
+      };
+      quizzes.push(defaultQuiz);
+      console.log(`No quizzes found in manifest. Created default quiz: ${defaultQuiz.title}`);
+    }
+    
     // For each quiz, find and parse the content
     for (let i = 0; i < quizzes.length; i++) {
       console.log(`Parsing quiz content for: ${quizzes[i].title}`);
@@ -382,6 +412,24 @@ function findQuizzesInManifest(manifest, tempFolder) {
     return quizzes;
   } catch (e) {
     console.log("Error processing manifest: " + e.message);
+    
+    // Create a fallback quiz in case of error
+    if (quizzes.length === 0) {
+      const fallbackQuiz = {
+        identifier: 'fallback_quiz',
+        href: '',
+        files: [],
+        title: 'Imported Content',
+        content: {
+          title: 'Imported Content',
+          description: 'Converted from IMSCC file',
+          questions: []
+        }
+      };
+      console.log('Created fallback quiz due to manifest processing error');
+      return [fallbackQuiz];
+    }
+    
     return quizzes; // Return what we have so far
   }
 }
@@ -879,9 +927,8 @@ function createGoogleForms(quizzes) {
     
     // Add a check for empty questions array specifically
     if (!quiz.content.questions || quiz.content.questions.length === 0) {
-      console.log(`Skipping form creation for ${quiz.content.title} because it has no parsed questions.`);
-      // Optionally, create an empty form anyway or handle as needed
-      // continue; // Uncomment this line if you want to strictly skip forms with 0 questions
+      console.log(`No parsed questions found for ${quiz.content.title}, but creating a form anyway.`);
+      // We'll continue and create the form even without questions
     }
     
     try {
